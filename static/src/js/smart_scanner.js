@@ -17,6 +17,7 @@ class SmartScannerPopup extends AbstractAwaitablePopup {
         this.stream = null;
         this.animFrame = null;
         this.detector = null;
+        this._zxingReader = null;
         this.isProcessing = false;
         this.torchOn = false;
         this._canvas = document.createElement("canvas");
@@ -28,6 +29,17 @@ class SmartScannerPopup extends AbstractAwaitablePopup {
     _status(msg, color) {
         const el = document.getElementById("ss_status");
         if (el) { el.innerText = msg; el.style.backgroundColor = color; }
+    }
+
+    _loadScript(src) {
+        return new Promise((resolve, reject) => {
+            if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
+            const s = document.createElement("script");
+            s.src = src;
+            s.onload = resolve;
+            s.onerror = () => reject(new Error("Gagal memuat library"));
+            document.head.appendChild(s);
+        });
     }
 
     async _init() {
@@ -48,10 +60,8 @@ class SmartScannerPopup extends AbstractAwaitablePopup {
                     formats: ["ean_13", "ean_8", "code_128", "code_39", "upc_a"]
                 });
                 this._scanNative();
-            } else if (window.Quagga) {
-                this._scanQuagga();
             } else {
-                this._status("Gunakan Chrome Android untuk scan otomatis.", "#ffeb3b");
+                this._scanZxing();
             }
         } catch (e) {
             this._status("Tidak dapat akses kamera: " + e.message, "#f44336");
@@ -82,26 +92,42 @@ class SmartScannerPopup extends AbstractAwaitablePopup {
         this.animFrame = requestAnimationFrame(() => this._scanNative());
     }
 
-    _scanQuagga() {
-        const video = document.getElementById("ss_video");
-        if (!video) return;
-        window.Quagga.init({
-            inputStream: {
-                type: "LiveStream",
-                target: video,
-                constraints: { facingMode: "environment" },
-                area: { top: "35%", right: "0%", left: "0%", bottom: "35%" }
-            },
-            decoder: { readers: ["ean_reader", "ean_8_reader", "code_128_reader"] },
-            locate: true
-        }, (err) => {
-            if (err) { this._status("Quagga error: " + err, "#f44336"); return; }
-            window.Quagga.start();
-            window.Quagga.onDetected((result) => {
-                const code = result && result.codeResult && result.codeResult.code;
-                if (code) this._onDetected(code);
-            });
-        });
+    async _scanZxing() {
+        try {
+            this._status("Memuat ZXing...", "#e0e0e0");
+            await this._loadScript(
+                "<https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/dist/zxing-browser.min.umd.js>"
+            );
+            if (!window.ZXing) throw new Error("ZXing tidak tersedia");
+            this._zxingReader = new window.ZXing.MultiFormatReader();
+            this._status("Siap (ZXing). Arahkan barcode ke garis merah.", "#e0e0e0");
+            this._zxingScanLoop();
+        } catch (e) {
+            this._status("Gagal memuat ZXing: " + e.message, "#f44336");
+        }
+    }
+
+    _zxingScanLoop() {
+        if (!this.active) return;
+        if (!this.isProcessing) {
+            const video = document.getElementById("ss_video");
+            if (video && video.readyState >= HTMLMediaElement.HAVE_ENOUGH_DATA) {
+                const vw = video.videoWidth;
+                const vh = video.videoHeight;
+                const cropH = Math.floor(vh * 0.30);
+                const cropY = Math.floor(vh * 0.35);
+                this._canvas.width = vw;
+                this._canvas.height = cropH;
+                this._ctx.drawImage(video, 0, cropY, vw, cropH, 0, 0, vw, cropH);
+                try {
+                    const lum = new window.ZXing.HTMLCanvasElementLuminanceSource(this._canvas);
+                    const bitmap = new window.ZXing.BinaryBitmap(new window.ZXing.HybridBinarizer(lum));
+                    const result = this._zxingReader.decode(bitmap);
+                    if (result) { this._onDetected(result.getText()); return; }
+                } catch (e) {}
+            }
+        }
+        this.animFrame = requestAnimationFrame(() => this._zxingScanLoop());
     }
 
     async _onDetected(code) {
@@ -147,6 +173,7 @@ class SmartScannerPopup extends AbstractAwaitablePopup {
         const video = document.getElementById("ss_video");
         if (video) video.play();
         if (this.detector) this._scanNative();
+        else if (this._zxingReader) this._zxingScanLoop();
     }
 
     async toggleTorch() {
@@ -161,7 +188,7 @@ class SmartScannerPopup extends AbstractAwaitablePopup {
     _cleanup() {
         this.active = false;
         if (this.animFrame) cancelAnimationFrame(this.animFrame);
-        if (window.Quagga) { try { window.Quagga.stop(); } catch (e) {} }
+        if (this._zxingReader) { try { this._zxingReader.reset(); } catch (e) {} }
         this.stream?.getTracks().forEach(t => t.stop());
     }
 }
