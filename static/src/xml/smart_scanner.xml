@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <t t-name="pos_smart_scanner.SmartScannerPopup" owl="1">
+        <div class="ss-overlay">
+            <video id="ss_video" autoplay="autoplay" playsinline="playsinline" muted="muted" class="ss-video"/>
+
+            <!-- Scan frame -->
+            <div class="ss-mask ss-mask-top"/>
+            <div class="ss-mask-middle">
+                <div class="ss-mask ss-mask-side"/>
+                <div class="ss-window">
+                    <div class="ss-corner tl"/><div class="ss-corner tr"/>
+                    <div class="ss-corner bl"/><div class="ss-corner br"/>
+                    <div class="ss-line"/>
+                </div>
+                <div class="ss-mask ss-mask-side"/>
+            </div>
+            <div class="ss-mask ss-mask-bottom"/>
+
+            <!-- Status -->
+            <div id="ss_status" class="ss-status">Memulai kamera...</div>
+
+            <!-- Controls -->
+            <div class="ss-controls">
+                <button id="ss_torch" t-on-click="toggleTorch" class="ss-btn">
+                    <i class="fa fa-bolt"/>
+                </button>
+                <button t-on-click="cancel" class="ss-btn ss-btn-close">
+                    <i class="fa fa-times"/>
+                </button>
+            </div>
+        </div>
+    </t>
+
+    <t t-name="pos_smart_scanner.ProductScreen" t-inherit="point_of_sale.ProductScreen" t-inherit-mode="extension" owl="1">
+        <xpath expr="//div[hasclass('pads')]" position="before">
+            <button class="btn btn-warning w-100 fw-bolder py-2"
+                    t-on-click="onClickCameraScan"
+                    t-if="ui.isSmall">
+                <i class="fa fa-camera me-2"/>Scan Barcode
+            </button>
+        </xpath>
+        <xpath expr="//div[hasclass('control-buttons')]" position="inside">
+            <button class="btn btn-light control-button"
+                    t-on-click="onClickCameraScan"
+                    t-if="!ui.isSmall">
+                <i class="fa fa-camera me-1"/>Scan
+            </button>
+        </xpath>
+    </t>
+
+</templates>
